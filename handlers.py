@@ -1,6 +1,6 @@
 from aiogram import Router
 from aiogram.filters import CommandStart
-from aiogram.types import Message, InputFile
+from aiogram.types import Message, FSInputFile
 import texts
 
 rt = Router()
@@ -8,7 +8,6 @@ rt = Router()
 
 @rt.message(CommandStart()) 
 async def cmd_start(message: Message):
-    photo = InputFile("images\start_image.png")
-    await message.answer_photo(
-        photo=photo,
-        caption=texts.Start)
+    photo = FSInputFile("images/start_image.png")
+    await message.answer_photo(photo,
+                               caption=texts.Start)

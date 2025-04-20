@@ -8,6 +8,8 @@ rt = Router()
 
 @rt.message(CommandStart()) 
 async def cmd_start(message: Message):
-    photo = FSInputFile("images/start_image.png")
-    await message.answer_photo(photo,
-                               caption=texts.Start)
+    startPhoto = FSInputFile("images/start_image.png")
+    await message.answer_photo(startPhoto,
+                               caption=texts.Start,
+                               parse_mode = "html"
+    )

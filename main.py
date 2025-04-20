@@ -1,22 +1,18 @@
 import asyncio
-import texts
-
 from aiogram import Bot, Dispatcher
-from aiogram.filters import CommandStart
-from aiogram.types import Message
+
 
 from config import BOT_TOKEN
+from handlers import rt
 
 dp = Dispatcher()
 bot = Bot(token=BOT_TOKEN)
 
-@dp.message(CommandStart())
-async def cmd_start(message: Message):
-    await message.answer(texts.Start)
 
 
 
 async def main():
+    dp.include_router(rt)
     await dp.start_polling(bot)
 
 

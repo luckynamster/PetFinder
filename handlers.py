@@ -275,3 +275,26 @@ async def handle_chip_number(message: Message, state: FSMContext):
     finally:
         conn.close()
         await state.clear()
+
+#уведомления
+@rt.callback_query(F.data.startswith("show_contacts_"))
+async def handle_contacts_request(callback: CallbackQuery):
+    user_id = int(callback.data.split("_")[-1])
+
+    conn = sqlite3.connect("database.db")
+    cursor = conn.cursor()
+    cursor.execute("SELECT chat_id FROM users WHERE id = ?", (user_id,))
+    chat_id = cursor.fetchone()[0]
+    conn.close()
+
+    await callback.message.answer(
+        f"📞 Контакт пользователя: @{callback.from_user.username}\n"
+        f"ID чата: {chat_id}"
+    )
+    await callback.answer()
+
+
+@rt.callback_query(F.data == "dismiss_notification")
+async def handle_dismiss(callback: CallbackQuery):
+    await callback.message.delete()
+    await callback.answer("Уведомление скрыто")

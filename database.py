@@ -28,10 +28,21 @@ def initialize_database():
             city TEXT NOT NULL,
             chip_number TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            is_active INTEGER DEFAULT 1 CHECK(is_active IN (0, 1)), 
             FOREIGN KEY(user_id) REFERENCES users(id)
         )
     ''')
-
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS notifications (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            source_request INTEGER,
+            matched_request INTEGER,
+            similarity REAL,
+            notified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY(source_request) REFERENCES requests(id),
+            FOREIGN KEY(matched_request) REFERENCES requests(id)
+        )
+    ''')
     conn.commit()
     conn.close()
     print(f"[{datetime.now()}] База данных инициализирована")

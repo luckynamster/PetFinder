@@ -1,12 +1,10 @@
-# image_processing.py
 import numpy as np
 from PIL import Image
-import requests
 from io import BytesIO
 from sentence_transformers import SentenceTransformer
 from pathlib import Path
 import logging
-
+from typing import List, Tuple
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -25,100 +23,76 @@ except Exception as e:
 # ФУНКЦИЯ ДЛЯ ЗАГРУЗКИ И ОБРАБОТКИ ИЗОБРАЖЕНИЙ
 # =============================================
 def get_image_embedding(image_input) -> np.ndarray:
-
     try:
-        # --------------------------------------------------
-        # ЗАГРУЗКА ИЗОБРАЖЕНИЯ ИЗ РАЗНЫХ ИСТОЧНИКОВ
-        # --------------------------------------------------
-        if isinstance(image_input, (str, Path)):
+        # Если входные данные - bytes (BLOB из БД)
+        if isinstance(image_input, bytes):
+            logger.info("🔍 Loading image from BLOB data")
+            image = Image.open(BytesIO(image_input))
 
-                image_path = Path(image_input)
-                logger.info(f"📂 Loading image: {image_path}")
-                if not image_path.exists():
-                    raise FileNotFoundError(f"Image file not found: {image_path}")
-                image = Image.open(image_path)
+        # Если путь к файлу или URL
+        elif isinstance(image_input, (str, Path)):
+            image_path = Path(image_input)
+            logger.info(f"📂 Loading image: {image_path}")
+            if not image_path.exists():
+                raise FileNotFoundError(f"Image file not found: {image_path}")
+            image = Image.open(image_path)
+
+        # Если уже объект Image
+        elif isinstance(image_input, Image.Image):
+            image = image_input
 
         else:
             raise ValueError("❌ Unsupported image input type")
 
-        # --------------------------------------------------
-        # ПРЕДВАРИТЕЛЬНАЯ ОБРАБОТКА ИЗОБРАЖЕНИЯ
-        # --------------------------------------------------
-        # Конвертируем в RGB, если изображение в другом формате
+        # Конвертация в RGB
         if image.mode != 'RGB':
             logger.debug("Converting image to RGB format")
             image = image.convert('RGB')
 
-        # --------------------------------------------------
-        # ПРЕОБРАЗОВАНИЕ В ВЕКТОР С ПОМОЩЬЮ CLIP
-        # --------------------------------------------------
+        # Преобразование в вектор
         logger.info("🖼️ Processing image with CLIP model...")
         return model.encode(image)
 
     except Exception as e:
         logger.error(f"🔥 Error processing image: {str(e)}")
-        raise ValueError(f"Image processing failed: {str(e)}") from e
+        raise
+
 
 
 # =============================================
 # ФУНКЦИЯ СРАВНЕНИЯ ИЗОБРАЖЕНИЙ
 # =============================================
-def batch_compare(source_image, image_list: list) -> list[tuple[str, float]]:
+def batch_compare(
+        source_image: Image.Image,
+        image_pairs: List[Tuple[int, Image.Image]]) -> List[Tuple[int, float]]:
     """
-
-        source_image: (загружаемая пользователем)
-        image_list: (лист изображений для сравнивания)
-
-    Возвращает:
-        Список кортежей в формате [(путь_к_изображению, оценка_схожести), ...],
-        отсортированный по убыванию схожести (от 1.0 до 0.0)
+    Сравнивает исходное изображение со списком (request_id, image)
+    Возвращает список кортежей (request_id, similarity_score)
     """
-    if not image_list:
-        logger.warning("⚠️ Лист изображений пуст")
-        return []
-
     results = []
 
     try:
-        # =============================================
-        # ПОДГОТОВКА ИСХОДНОГО ИЗОБРАЖЕНИЯ
-        # =============================================
-        logger.info(f"🔍 Подготовка для сравнивания...")
+        # Эмбеддинг исходного изображения
         source_embedding = get_image_embedding(source_image)
         source_embedding = source_embedding / np.linalg.norm(source_embedding)
 
-        # =============================================
-        # ПАКЕТНАЯ ОБРАБОТКА СПИСКА
-        # =============================================
-        logger.info(f"🔄 Обрабатывается {len(image_list)} изображений...")
-
-        for img_path in image_list:
+        # Пакетная обработка
+        for req_id, image in image_pairs:
             try:
-                # 2.1. Получаем вектор текущего изображения
-                current_embedding = get_image_embedding(img_path)
+                current_embedding = get_image_embedding(image)
                 current_embedding = current_embedding / np.linalg.norm(current_embedding)
 
-                # 2.2. Вычисляем косинусную схожесть
                 similarity = float(np.dot(source_embedding, current_embedding))
-                similarity = max(0.0, min(similarity, 1.0))  # Ограничиваем [0, 1]
+                similarity = max(0.0, min(similarity, 1.0))
 
-                # 2.3. Сохраняем результат
-                results.append((str(img_path), similarity))
-
-                logger.debug(f"Обработано: {img_path} → {similarity:.2f}")
+                results.append((req_id, similarity))
 
             except Exception as e:
-                logger.warning(f"⏩ Пропущенно {img_path}: {str(e)}")
+                logger.warning(f"⏩ Skipping request {req_id}: {str(e)}")
                 continue
 
-        # =============================================
-        # СОРТИРОВКА И ВОЗВРАТ РЕЗУЛЬТАТОВ
-        # =============================================
-        logger.info("📊 Сортировка по степени схожести...")
-        sorted_results = sorted(results, key=lambda x: x[1], reverse=True)
-
-        return sorted_results
+        return sorted(results, key=lambda x: x[1], reverse=True)
 
     except Exception as e:
-        logger.error(f"🔥 Не удалось - ошибка: {str(e)}")
+        logger.error(f"🔥 Batch comparison failed: {str(e)}")
         return []

@@ -7,6 +7,7 @@ from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 import sqlite3
 
 import texts
+from texts import CATEGORY_TEXT
 
 rt = Router()
 
@@ -42,6 +43,7 @@ def main_keyboard():
             [types.KeyboardButton(text="Я ИЩУ ПИТОМЦА")],
             [types.KeyboardButton(text="Я НАШЕЛ ПИТОМЦА")]
         ],
+
         resize_keyboard=True,
 
     )
@@ -51,7 +53,7 @@ def main_keyboard():
 @rt.callback_query(F.data == "cancel")
 async def cancel_handler(callback: CallbackQuery, state: FSMContext):
     await state.clear()
-    await callback.message.answer(texts.CANCEL, reply_markup=main_keyboard(),parse_mode="HTML")
+    await callback.message.answer(texts.CANCEL, reply_markup=main_keyboard(), parse_mode="HTML")
     await callback.answer()
 
 
@@ -68,15 +70,25 @@ async def cmd_start(message: Message):
 
 @rt.message(F.text.in_(["Я ИЩУ ПИТОМЦА", "Я НАШЕЛ ПИТОМЦА"]))
 async def handle_request_type(message: Message, state: FSMContext):
-    request_type = "lost" if message.text == "Я ИЩУ ПИТОМЦА" else "found"
+    if message.text == "Я ИЩУ ПИТОМЦА":
+        request_type = "lost"
+        await message.answer(
+            texts.FINDPET,
+            reply_markup=types.ReplyKeyboardRemove(),
+            parse_mode="HTML"
+        )
+    else:
+        request_type = "found"
+        await message.answer(
+            texts.FOUNDPET,
+            reply_markup=types.ReplyKeyboardRemove(),
+            parse_mode="HTML"
+        )
+
     await state.update_data(request_type=request_type)
     await state.set_state(Form.photo)
-    await message.answer(
-        "📸 Пожалуйста, отправьте фотографию животного",
-        reply_markup=cancel_keyboard()
-    )
 
-
+# обрабатываем фотографию или выводим ошибку
 @rt.message(Form.photo, F.photo)
 async def handle_photo(message: Message, state: FSMContext, bot: Bot):
     try:
@@ -96,17 +108,24 @@ async def handle_photo(message: Message, state: FSMContext, bot: Bot):
         await message.answer("❌ Ошибка обработки фото. Попробуйте еще раз.", reply_markup=cancel_keyboard())
         await state.clear()
 
-
+@rt.message(Form.photo)
+async def handle_not_photo(message: Message, state: FSMContext):
+    if not message.photo:
+        await message.answer(texts.NOT_PHOTO,
+            reply_markup=cancel_keyboard(),
+            parse_mode="HTML"
+        )
+#обработчик выбора категории животного
 @rt.message(Form.category)
 async def handle_category(message: Message, state: FSMContext):
     await state.update_data(category=message.text)
     await state.set_state(Form.breed)
     await message.answer(
-        "🏷️ Введите породу животного (или 'дворняга' если неизвестно):",
+        CATEGORY_TEXT,
         reply_markup=cancel_keyboard()
     )
 
-
+#обработчик выбора породы
 @rt.message(Form.breed)
 async def handle_breed(message: Message, state: FSMContext):
     await state.update_data(breed=message.text)
@@ -149,7 +168,7 @@ async def handle_gender(callback: CallbackQuery, state: FSMContext):
     size_builder.adjust(2)
 
     await callback.message.answer(
-        "📏 Выберите размер животного:",
+        texts.SIZE_TEXT,
         reply_markup=size_builder.as_markup()
     )
     await callback.answer()
@@ -178,7 +197,7 @@ async def handle_size(callback: CallbackQuery, state: FSMContext):
     hair_builder.adjust(2)
 
     await callback.message.answer(
-        "🧶 Выберите тип шерсти:",
+        texts.FUR_TEXT,
         reply_markup=hair_builder.as_markup()
     )
     await callback.answer()
@@ -197,22 +216,22 @@ async def handle_hair(callback: CallbackQuery, state: FSMContext):
     await callback.message.delete()
     await state.set_state(Form.city)
     await callback.message.answer(
-        "🌆 Введите город, где животное было потеряно/найдено:",
+        texts.CITY_TEXT,
         reply_markup=cancel_keyboard()
     )
     await callback.answer()
 
-
+#обработчик города
 @rt.message(Form.city)
 async def handle_city(message: Message, state: FSMContext):
     await state.update_data(city=message.text)
     await state.set_state(Form.chip_number)
     await message.answer(
-        "🔢 Если известно, введите номер чипа (или отправьте /skip):",
+        texts.CHIP_TEXT,
         reply_markup=cancel_keyboard()
     )
 
-
+#после отправки последнего сообщения мы делаем запись в базу данных
 @rt.message(Form.chip_number, Command("skip"))
 @rt.message(Form.chip_number)
 async def handle_chip_number(message: Message, state: FSMContext):
@@ -247,10 +266,11 @@ async def handle_chip_number(message: Message, state: FSMContext):
         ))
 
         conn.commit()
-        await message.answer("✅ Данные сохранены! Начинаем поиск...", reply_markup=main_keyboard())
-
+        await message.answer(texts.SUCCESS, reply_markup=main_keyboard())
+        #ЗАПИСЫВАЕМ В БД ЕСЛИ НЕТ ОШИБОК, А ЕСЛИ ЕСТЬ ТО ВЫВОДИМ В ЧАТ С ПОЛЬЗОВАТЕЛЕМ
     except sqlite3.Error as e:
-        await message.answer(f"❌ Ошибка сохранения данных: {str(e)}", reply_markup=cancel_keyboard())
+
+        await message.answer(f"{texts.ERROR}{str(e)}", reply_markup=cancel_keyboard())
 
     finally:
         conn.close()

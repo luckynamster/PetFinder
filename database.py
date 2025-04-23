@@ -35,3 +35,4 @@ def initialize_database():
     conn.commit()
     conn.close()
     print(f"[{datetime.now()}] База данных инициализирована")
+initialize_database()

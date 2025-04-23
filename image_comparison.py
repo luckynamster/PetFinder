@@ -4,7 +4,6 @@ from io import BytesIO
 from typing import List, Tuple
 from PIL import Image
 
-
 from image_processing import get_image_embedding, batch_compare
 
 logging.basicConfig(level=logging.INFO)

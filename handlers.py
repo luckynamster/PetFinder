@@ -279,20 +279,45 @@ async def handle_chip_number(message: Message, state: FSMContext):
 #уведомления
 @rt.callback_query(F.data.startswith("show_contacts_"))
 async def handle_contacts_request(callback: CallbackQuery):
-    user_id = int(callback.data.split("_")[-1])
+    try:
+        # Извлекаем user_id из callback-данных
+        user_id = int(callback.data.split("_")[-1])
+    except (IndexError, ValueError) as e:
+        await callback.answer("❌ Ошибка в данных запроса", show_alert=True)
+        return
 
-    conn = sqlite3.connect("database.db")
-    cursor = conn.cursor()
-    cursor.execute("SELECT chat_id FROM users WHERE id = ?", (user_id,))
-    chat_id = cursor.fetchone()[0]
-    conn.close()
+    conn = None
+    try:
+        conn = sqlite3.connect("database.db")
+        cursor = conn.cursor()
 
-    await callback.message.answer(
-        f"📞 Контакт пользователя: @{callback.from_user.username}\n"
-        f"ID чата: {chat_id}"
-    )
-    await callback.answer()
+        # Ищем пользователя в базе
+        cursor.execute("SELECT chat_id FROM users WHERE id = ?", (user_id,))
+        user_row = cursor.fetchone()
 
+        if not user_row:
+            await callback.answer("❌ Пользователь не найден", show_alert=True)
+            return
+
+        # Получаем chat_id из результата запроса
+        chat_id = user_row[0]
+        username = callback.from_user.username or "не указан"
+
+        # Отправляем контактные данные
+        await callback.message.answer(
+            f"📞 Контактные данные:\n"
+            f"• Никнейм: @{username}\n"
+            f"• ID чата: {chat_id}"
+        )
+        await callback.answer()
+
+    except sqlite3.Error as e:
+        await callback.answer("⚠️ Ошибка при обращении к базе", show_alert=True)
+    except Exception as e:
+        await callback.answer("⚠️ Произошла внутренняя ошибка", show_alert=True)
+    finally:
+        if conn:
+            conn.close()
 
 @rt.callback_query(F.data == "dismiss_notification")
 async def handle_dismiss(callback: CallbackQuery):

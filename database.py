@@ -39,6 +39,7 @@ def initialize_database():
             matched_request INTEGER,
             similarity REAL,
             notified_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            UNIQUE(source_request, matched_request),  -- Добавляем уникальность
             FOREIGN KEY(source_request) REFERENCES requests(id),
             FOREIGN KEY(matched_request) REFERENCES requests(id)
         )

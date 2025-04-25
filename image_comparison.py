@@ -1,13 +1,9 @@
-import logging
 import sqlite3
 from io import BytesIO
 from typing import List, Tuple
 from PIL import Image
 
-from image_processing import get_image_embedding, batch_compare
-
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+from image_processing import batch_compare
 
 
 class ImageComparator:
@@ -23,7 +19,6 @@ class ImageComparator:
         try:
             return Image.open(BytesIO(blob_data)).convert('RGB')  # Принудительная конвертация в RGB
         except Exception as e:
-            logger.error(f"Ошибка конвертации BLOB: {str(e)}")
             raise ValueError("Invalid image data") from e
 
     def _get_comparable_requests(self, request_id: int) -> List[Tuple[int, bytes]]:
@@ -74,7 +69,6 @@ class ImageComparator:
                     image = self._blob_to_image(blob)
                     image_pairs.append((req_id, image))
                 except Exception as e:
-                    logger.warning(f"Пропущен запрос {req_id}: {str(e)}")
                     continue
 
             # Выполняем сравнение
@@ -90,7 +84,6 @@ class ImageComparator:
             return filtered
 
         except Exception as e:
-            logger.error(f"Ошибка сравнения: {str(e)}")
             return []
         finally:
             conn.close()

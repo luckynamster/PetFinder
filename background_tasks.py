@@ -1,5 +1,3 @@
-# background_tasks.py
-import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from datetime import datetime, timedelta
@@ -10,8 +8,6 @@ from aiogram.types import InlineKeyboardButton
 
 from image_comparison import ImageComparator
 
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
 
 
 class BackgroundProcessor:
@@ -30,16 +26,15 @@ class BackgroundProcessor:
             next_run_time=datetime.now() + timedelta(seconds=1)
         )
         self.scheduler.start()
-        logger.info("Фоновая обработка запущена")
+
 
     async def stop(self):
         """Останавливает задачи"""
         self.scheduler.shutdown()
-        logger.info("Фоновая обработка остановлена")
 
     async def process_all_requests(self):
         """Основная задача обработки"""
-        logger.info("Начало обработки запросов...")
+
 
         try:
             # Получаем активные запросы за последние 30 дней
@@ -57,10 +52,9 @@ class BackgroundProcessor:
             for request_id in request_ids:
                 await self.process_single_request(request_id)
 
-            logger.info("Обработка завершена успешно")
 
         except Exception as e:
-            logger.error(f"Ошибка обработки: {str(e)}")
+            print(f"Ошибка обработки: {str(e)}")
 
     async def process_single_request(self, request_id: int):
         """Обработка одного запроса"""
@@ -75,7 +69,7 @@ class BackgroundProcessor:
                 await self.notify_users(request_id, filtered)
 
         except Exception as e:
-            logger.error(f"Ошибка обработки запроса {request_id}: {str(e)}")
+            print(f"Ошибка обработки запроса {request_id}: {str(e)}")
 
     async def notify_users(self, source_id: int, matches: List[Tuple[int, float]]):
         """Отправка уведомлений пользователям"""
@@ -98,7 +92,7 @@ class BackgroundProcessor:
                     WHERE source_request = ? AND matched_request = ?
                 """, (source_id, match_id))
                 if cursor.fetchone():
-                    continue
+                    continue  # Пропускаем уже отправленные уведомления
 
                 # Получаем информацию о совпадении
                 cursor.execute("""
@@ -125,28 +119,42 @@ class BackgroundProcessor:
                 source_kb = self._create_notification_kb(match_user_id)
                 match_kb = self._create_notification_kb(source_user_id)
 
-                # Отправляем уведомления
-                await self.bot.send_message(
-                    chat_id=source_chat_id,
-                    text=message_text,
-                    reply_markup=source_kb
-                )
+                # Отправляем уведомления только если они еще не были отправлены
+                if not self.has_sent_notification(source_user_id, match_user_id):
+                    await self.bot.send_message(
+                        chat_id=source_chat_id,
+                        text=message_text,
+                        reply_markup=source_kb
+                    )
 
-                await self.bot.send_message(
-                    chat_id=match_chat_id,
-                    text=message_text,
-                    reply_markup=match_kb
-                )
+                    await self.bot.send_message(
+                        chat_id=match_chat_id,
+                        text=message_text,
+                        reply_markup=match_kb
+                    )
 
-                # Записываем в историю уведомлений
-                cursor.execute("""
-                    INSERT INTO notifications 
-                    (source_request, matched_request, similarity)
-                    VALUES (?, ?, ?)
-                """, (source_id, match_id, similarity))
+                    # Записываем в историю уведомлений
+                    cursor.execute("""
+                        INSERT INTO notifications 
+                        (source_request, matched_request, similarity)
+                        VALUES (?, ?, ?)
+                    """, (source_id, match_id, similarity))
 
-                conn.commit()
+            conn.commit()
 
+        finally:
+            conn.close()
+
+    def has_sent_notification(self, user_a: int, user_b: int) -> bool:
+        """Проверяет было ли уже отправлено уведомление между двумя пользователями"""
+        conn = sqlite3.connect(self.db_path)
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                SELECT 1 FROM notifications 
+                WHERE (source_request IN (?, ?) AND matched_request IN (?, ?))
+            """, (user_a, user_b, user_a, user_b))
+            return cursor.fetchone() is not None
         finally:
             conn.close()
 

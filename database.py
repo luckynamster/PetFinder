@@ -10,6 +10,7 @@ def initialize_database():
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             chat_id INTEGER UNIQUE NOT NULL,
+            username TEXT,
             registration_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
     ''')

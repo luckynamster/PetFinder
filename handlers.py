@@ -1,9 +1,9 @@
 from aiogram import Bot, Router, F, types
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message, FSInputFile, ReplyKeyboardRemove, CallbackQuery
+from aiogram.types import Message, FSInputFile, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
+from aiogram.utils.keyboard import InlineKeyboardBuilder
 import sqlite3
 
 import texts
@@ -88,6 +88,7 @@ async def handle_request_type(message: Message, state: FSMContext):
     await state.update_data(request_type=request_type)
     await state.set_state(Form.photo)
 
+
 # обрабатываем фотографию или выводим ошибку
 @rt.message(Form.photo, F.photo)
 async def handle_photo(message: Message, state: FSMContext, bot: Bot):
@@ -108,14 +109,17 @@ async def handle_photo(message: Message, state: FSMContext, bot: Bot):
         await message.answer("❌ Ошибка обработки фото. Попробуйте еще раз.", reply_markup=cancel_keyboard())
         await state.clear()
 
+
 @rt.message(Form.photo)
 async def handle_not_photo(message: Message, state: FSMContext):
     if not message.photo:
         await message.answer(texts.NOT_PHOTO,
-            reply_markup=cancel_keyboard(),
-            parse_mode="HTML"
-        )
-#обработчик выбора категории животного
+                             reply_markup=cancel_keyboard(),
+                             parse_mode="HTML"
+                             )
+
+
+# обработчик выбора категории животного
 @rt.message(Form.category)
 async def handle_category(message: Message, state: FSMContext):
     await state.update_data(category=message.text)
@@ -125,7 +129,8 @@ async def handle_category(message: Message, state: FSMContext):
         reply_markup=cancel_keyboard()
     )
 
-#обработчик выбора породы
+
+# обработчик выбора породы
 @rt.message(Form.breed)
 async def handle_breed(message: Message, state: FSMContext):
     await state.update_data(breed=message.text)
@@ -221,7 +226,8 @@ async def handle_hair(callback: CallbackQuery, state: FSMContext):
     )
     await callback.answer()
 
-#обработчик города
+
+# обработчик города
 @rt.message(Form.city)
 async def handle_city(message: Message, state: FSMContext):
     await state.update_data(city=message.text)
@@ -231,7 +237,8 @@ async def handle_city(message: Message, state: FSMContext):
         reply_markup=cancel_keyboard()
     )
 
-#после отправки последнего сообщения мы делаем запись в базу данных
+
+# после отправки последнего сообщения мы делаем запись в базу данных
 @rt.message(Form.chip_number, Command("skip"))
 @rt.message(Form.chip_number)
 async def handle_chip_number(message: Message, state: FSMContext):
@@ -243,10 +250,19 @@ async def handle_chip_number(message: Message, state: FSMContext):
 
     try:
         cursor = conn.cursor()
-        cursor.execute("INSERT OR IGNORE INTO users (chat_id) VALUES (?)", (message.from_user.id,))
+
+        # Получаем юзернейм или None
+        username = message.from_user.username if message.from_user.username else None
+
+        # Вставляем или игнорируем пользователя
+        cursor.execute("INSERT OR IGNORE INTO users (chat_id, username) VALUES (?, ?)",
+                       (message.from_user.id, username))
+
+        # Получаем user_id
         cursor.execute("SELECT id FROM users WHERE chat_id = ?", (message.from_user.id,))
         user_id = cursor.fetchone()[0]
 
+        # Вставляем запрос в таблицу requests
         cursor.execute('''
             INSERT INTO requests (
                 user_id, request_type, photo_data, category, breed,
@@ -267,21 +283,21 @@ async def handle_chip_number(message: Message, state: FSMContext):
 
         conn.commit()
         await message.answer(texts.SUCCESS, reply_markup=main_keyboard())
-        #ЗАПИСЫВАЕМ В БД ЕСЛИ НЕТ ОШИБОК, А ЕСЛИ ЕСТЬ ТО ВЫВОДИМ В ЧАТ С ПОЛЬЗОВАТЕЛЕМ
-    except sqlite3.Error as e:
 
+    except sqlite3.Error as e:
         await message.answer(f"{texts.ERROR}{str(e)}", reply_markup=cancel_keyboard())
 
     finally:
         conn.close()
         await state.clear()
 
-#уведомления
+
+# уведомления
 @rt.callback_query(F.data.startswith("show_contacts_"))
 async def handle_contacts_request(callback: CallbackQuery):
     try:
-        # Извлекаем user_id из callback-данных
-        user_id = int(callback.data.split("_")[-1])
+        # Извлекаем user_id целевого пользователя из callback-данных
+        target_user_id = int(callback.data.split("_")[-1])
     except (IndexError, ValueError) as e:
         await callback.answer("❌ Ошибка в данных запроса", show_alert=True)
         return
@@ -291,33 +307,36 @@ async def handle_contacts_request(callback: CallbackQuery):
         conn = sqlite3.connect("database.db")
         cursor = conn.cursor()
 
-        # Ищем пользователя в базе
-        cursor.execute("SELECT chat_id FROM users WHERE id = ?", (user_id,))
-        user_row = cursor.fetchone()
+        # Получаем данные целевого пользователя из базы
+        cursor.execute("""
+            SELECT chat_id, username 
+            FROM users 
+            WHERE id = ?
+        """, (target_user_id,))
+        target_user = cursor.fetchone()
 
-        if not user_row:
+        if not target_user:
             await callback.answer("❌ Пользователь не найден", show_alert=True)
             return
 
-        # Получаем chat_id из результата запроса
-        chat_id = user_row[0]
-        username = callback.from_user.username or "не указан"
+        target_chat_id, target_username = target_user
+        target_username = target_username or "не указан"
 
-        # Отправляем контактные данные
+        # Отправляем контакты целевого пользователя
         await callback.message.answer(
-            f"📞 Контактные данные:\n"
-            f"• Никнейм: @{username}\n"
-            f"• ID чата: {chat_id}"
+            f"• Никнейм: @{target_username}\n"
         )
         await callback.answer()
 
     except sqlite3.Error as e:
-        await callback.answer("⚠️ Ошибка при обращении к базе", show_alert=True)
+        await callback.answer("⚠️ Ошибка при запросе данных", show_alert=True)
     except Exception as e:
-        await callback.answer("⚠️ Произошла внутренняя ошибка", show_alert=True)
+
+        await callback.answer("⚠️ Внутренняя ошибка", show_alert=True)
     finally:
         if conn:
             conn.close()
+
 
 @rt.callback_query(F.data == "dismiss_notification")
 async def handle_dismiss(callback: CallbackQuery):

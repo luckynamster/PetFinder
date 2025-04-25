@@ -1,3 +1,5 @@
+# background_tasks.py
+import logging
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
 from datetime import datetime, timedelta
@@ -8,6 +10,8 @@ from aiogram.types import InlineKeyboardButton
 
 from image_comparison import ImageComparator
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 
 class BackgroundProcessor:
@@ -22,19 +26,20 @@ class BackgroundProcessor:
         """Запускает периодические задачи"""
         self.scheduler.add_job(
             self.process_all_requests,
-            trigger=IntervalTrigger(minutes=1),
+            trigger=IntervalTrigger(hours=1),
             next_run_time=datetime.now() + timedelta(seconds=1)
         )
         self.scheduler.start()
-
+        logger.info("Фоновая обработка запущена")
 
     async def stop(self):
         """Останавливает задачи"""
         self.scheduler.shutdown()
+        logger.info("Фоновая обработка остановлена")
 
     async def process_all_requests(self):
         """Основная задача обработки"""
-
+        logger.info("Начало обработки запросов...")
 
         try:
             # Получаем активные запросы за последние 30 дней
@@ -52,9 +57,10 @@ class BackgroundProcessor:
             for request_id in request_ids:
                 await self.process_single_request(request_id)
 
+            logger.info("Обработка завершена успешно")
 
         except Exception as e:
-            print(f"Ошибка обработки: {str(e)}")
+            logger.error(f"Ошибка обработки: {str(e)}")
 
     async def process_single_request(self, request_id: int):
         """Обработка одного запроса"""
@@ -69,7 +75,7 @@ class BackgroundProcessor:
                 await self.notify_users(request_id, filtered)
 
         except Exception as e:
-            print(f"Ошибка обработки запроса {request_id}: {str(e)}")
+            logger.error(f"Ошибка обработки запроса {request_id}: {str(e)}")
 
     async def notify_users(self, source_id: int, matches: List[Tuple[int, float]]):
         """Отправка уведомлений пользователям"""

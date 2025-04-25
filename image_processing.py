@@ -3,13 +3,17 @@ from PIL import Image
 from io import BytesIO
 from sentence_transformers import SentenceTransformer
 from pathlib import Path
+import logging
 from typing import List, Tuple
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Загружаем нейросетевую модель CLIP при старте
 # Эта модель будет преобразовывать изображения в числовые векторы
 try:
     model = SentenceTransformer('clip-ViT-B-32')
+    logger.info("✅ CLIP загружен успешно")
 except Exception as e:
     logger.error(f"❌ Ошибка при загрузке CLIP: {str(e)}")
     raise

@@ -1,11 +1,12 @@
 from aiogram import Bot, Router, F, types
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message, FSInputFile, CallbackQuery
+from aiogram.types import Message, FSInputFile, ReplyKeyboardRemove, CallbackQuery
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.utils.keyboard import InlineKeyboardBuilder
+from aiogram.utils.keyboard import ReplyKeyboardBuilder, InlineKeyboardBuilder
 import sqlite3
-
+import logging
+logger = logging.getLogger(__name__)
 import texts
 from texts import CATEGORY_TEXT
 
@@ -291,7 +292,6 @@ async def handle_chip_number(message: Message, state: FSMContext):
         conn.close()
         await state.clear()
 
-
 # уведомления
 @rt.callback_query(F.data.startswith("show_contacts_"))
 async def handle_contacts_request(callback: CallbackQuery):
@@ -300,6 +300,7 @@ async def handle_contacts_request(callback: CallbackQuery):
         target_user_id = int(callback.data.split("_")[-1])
     except (IndexError, ValueError) as e:
         await callback.answer("❌ Ошибка в данных запроса", show_alert=True)
+        logger.error(f"Некорректный формат callback: {callback.data}. Ошибка: {e}")
         return
 
     conn = None
@@ -317,6 +318,7 @@ async def handle_contacts_request(callback: CallbackQuery):
 
         if not target_user:
             await callback.answer("❌ Пользователь не найден", show_alert=True)
+            logger.warning(f"Пользователь {target_user_id} не найден")
             return
 
         target_chat_id, target_username = target_user
@@ -324,14 +326,17 @@ async def handle_contacts_request(callback: CallbackQuery):
 
         # Отправляем контакты целевого пользователя
         await callback.message.answer(
+            "📞 Контактные данные:\n"
             f"• Никнейм: @{target_username}\n"
+
         )
         await callback.answer()
 
     except sqlite3.Error as e:
+        logger.error(f"Ошибка БД: {str(e)}")
         await callback.answer("⚠️ Ошибка при запросе данных", show_alert=True)
     except Exception as e:
-
+        logger.error(f"Неизвестная ошибка: {str(e)}")
         await callback.answer("⚠️ Внутренняя ошибка", show_alert=True)
     finally:
         if conn:
